@@ -18,7 +18,9 @@ use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
 use crate::syscall::TaskInfo;
+use crate::timer::get_time_ms;
 use lazy_static::*;
+// use log::debug;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 
@@ -85,6 +87,7 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let task0 = &mut inner.tasks[0];
         task0.task_info.status = TaskStatus::Running;
+        task0.task_info.time = get_time_ms();
         let next_task_cx_ptr = &task0.task_cx as *const TaskContext;
         drop(inner);
         let mut _unused = TaskContext::zero_init();
@@ -106,7 +109,9 @@ impl TaskManager {
     fn mark_current_exited(&self) {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
-        inner.tasks[current].task_info.status = TaskStatus::Exited;
+        let taskinfo = &mut inner.tasks[current].task_info;
+        taskinfo.status = TaskStatus::Exited;
+        taskinfo.time = get_time_ms() - taskinfo.time;
     }
 
     /// Find next task to run and return task id.
@@ -126,7 +131,11 @@ impl TaskManager {
         if let Some(next) = self.find_next_task() {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
-            inner.tasks[next].task_info.status = TaskStatus::Running;
+            let taskinfo = &mut inner.tasks[next].task_info;
+            taskinfo.status = TaskStatus::Running;
+            if taskinfo.time == 0 {
+                taskinfo.time = get_time_ms();
+            }
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
@@ -143,14 +152,26 @@ impl TaskManager {
 
     /// increase syscall times
     fn increase_syscall_count(&self, syscall_id: usize) {
-        let inner = self.inner.exclusive_access();
+        let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
-        let mut taskinfo = inner.tasks[current].task_info;
+        let taskinfo = &mut inner.tasks[current].task_info;
         taskinfo.syscall_times[syscall_id] += 1;
-
+        // debug!("id:{}, {}", syscall_id, taskinfo.syscall_times[syscall_id]);
         drop(inner);
     }
 
+    /// return current taskinfo
+    fn get_task_info(&self) -> TaskInfo {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+
+        // 利用taskinfo的Copy特性，这里实际返回的是taskinfo的副本，所以后续的修改
+        // 并不影响原task_info.time的值，current task的time字段始终保留的是程序第一次运行的时间
+        let taskinfo = inner.tasks[current].task_info;
+
+        drop(inner);
+        taskinfo
+    }
 }
 
 /// Run the first task in task list.
@@ -189,4 +210,9 @@ pub fn exit_current_and_run_next() {
 /// increase syscall times
 pub fn increase_syscall_count(syscall_id: usize) {
     TASK_MANAGER.increase_syscall_count(syscall_id);
+}
+
+/// get current task's infomation
+pub fn take_current_taskinfo() -> TaskInfo {
+    TASK_MANAGER.get_task_info()
 }

@@ -1,11 +1,13 @@
 //! Process management syscalls
 
-use log::trace;
+use log::{debug, trace};
 
 use crate::{
     config::MAX_SYSCALL_NUM,
-    task::{exit_current_and_run_next, suspend_current_and_run_next, TaskStatus},
-    timer::get_time_us,
+    task::{
+        exit_current_and_run_next, suspend_current_and_run_next, take_current_taskinfo, TaskStatus,
+    },
+    timer::{get_time_us, get_time_ms},
 };
 
 #[repr(C)]
@@ -20,7 +22,7 @@ pub struct TimeVal {
 
 /// Task information
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Copy, Clone)]
 pub struct TaskInfo {
     /// Task status in it's life cycle
     pub status: TaskStatus,
@@ -58,7 +60,16 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
-pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
+pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
     trace!("kernel: sys_task_info");
+    let t = unsafe { &mut *ti };
+    *t = take_current_taskinfo();
+    t.time = get_time_ms() - t.time;
+    t.syscall_times.iter().enumerate().for_each(|(k, v)| {
+        if *v != 0 {
+            debug!("{}: {}", k, v)
+        }
+    });
+    // debug!("{}", t.syscall_times[169]);
     0
 }
