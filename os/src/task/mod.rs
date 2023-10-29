@@ -140,6 +140,17 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// increase syscall times
+    fn increase_syscall_count(&self, syscall_id: usize) {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let mut taskinfo = inner.tasks[current].task_info;
+        taskinfo.syscall_times[syscall_id] += 1;
+
+        drop(inner);
+    }
+
 }
 
 /// Run the first task in task list.
@@ -173,4 +184,9 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+/// increase syscall times
+pub fn increase_syscall_count(syscall_id: usize) {
+    TASK_MANAGER.increase_syscall_count(syscall_id);
 }

@@ -36,6 +36,29 @@ fn sbi_call(which: usize, arg0: usize, arg1: usize, arg2: usize) -> usize {
     ret
 }
 
+/// export sbi_call_N macro, sbi_call_N!(eid, fid, arg0, arg1, arg2...), up to 6 parameters
+// #[macro_export]
+// macro_rules! sbi_call_N {
+//     ($eid:expr, $fid:expr, $($arg:expr),* $(,)?    ) => {{
+//         let args = [$($arg),*];
+//         if args.len() > 6 || args.len() < 2 { panic!("Low to 2 and up to 6 parameters: eid, fid, a0 ~ a5") }
+
+//         let mut ret;
+//         unsafe {
+//             asm!(
+//                 "ecall",
+//                 $( in(concat!("a", stringify!($arg))) $arg, )*
+//                 in("a6") $fid,
+//                 in("a7") $eid,
+//                 lateout("a0") _,
+//                 lateout("a1") ret,
+//             );
+//         }
+//         ret
+//     }};
+// }
+
+
 #[inline(always)]
 fn sbi_call_4(eid: usize, fid: usize, arg0: usize, arg1: usize, arg2: usize) -> usize {
     let mut ret;
