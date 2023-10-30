@@ -9,6 +9,18 @@ const SBI_CONSOLE_PUTCHAR: usize = 1;
 const SBI_CONSOLE_GETCHAR: usize = 2;
 const SBI_SHUTDOWN: usize = 8;
 
+const SRST_EXTENSION: usize = 0x53525354;
+const SYSTEM_RESET_FUNCTION: usize = 0;
+enum SystemResetType {
+    Shutdown = 0,
+    ColdReboot = 1,
+    WarmReboot = 2,
+}
+enum SystemResetReason {
+    NoReason = 0,
+    SystemFailure = 1,
+}
+
 /// general sbi call
 #[inline(always)]
 fn sbi_call(which: usize, arg0: usize, arg1: usize, arg2: usize) -> usize {
@@ -26,6 +38,21 @@ fn sbi_call(which: usize, arg0: usize, arg1: usize, arg2: usize) -> usize {
     ret
 }
 
+#[inline(always)]
+fn sbi_call_4(eid: usize, fid: usize, arg0: usize, arg1: usize, arg2: usize) -> usize {
+    let mut ret;
+    unsafe {
+        asm!(
+            "ecall",
+            inlateout("a0") arg0 => _,
+            inlateout("a1") arg1 => ret,
+            in("a2") arg2,
+            in("a6") fid,
+            in("a7") eid,
+        );
+    }
+    ret
+}
 /// use sbi call to set timer
 pub fn set_timer(timer: usize) {
     sbi_call(SBI_SET_TIMER, timer, 0, 0);
@@ -43,6 +70,12 @@ pub fn console_getchar() -> usize {
 
 /// use sbi call to shutdown the kernel
 pub fn shutdown() -> ! {
-    sbi_call(SBI_SHUTDOWN, 0, 0, 0);
+    sbi_call_4(
+        SRST_EXTENSION,
+        SYSTEM_RESET_FUNCTION,
+        SystemResetType::Shutdown as usize,
+        SystemResetReason::NoReason as usize,
+        0,
+    );
     panic!("It should shutdown!");
 }

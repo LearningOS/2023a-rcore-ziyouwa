@@ -7,6 +7,7 @@ use bitflags::*;
 
 bitflags! {
     /// page table entry flags
+    #[derive(PartialEq)]
     pub struct PTEFlags: u8 {
         const V = 1 << 0;
         const R = 1 << 1;
@@ -31,7 +32,7 @@ impl PageTableEntry {
     /// Create a new page table entry
     pub fn new(ppn: PhysPageNum, flags: PTEFlags) -> Self {
         PageTableEntry {
-            bits: ppn.0 << 10 | flags.bits as usize,
+            bits: ppn.0 << 10 | flags.bits() as usize,
         }
     }
     /// Create an empty page table entry
