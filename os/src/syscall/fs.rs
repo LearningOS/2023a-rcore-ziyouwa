@@ -1,6 +1,6 @@
 //! File and filesystem-related syscalls
 
-use crate::mm::translated_byte_buffer;
+pub(crate) use crate::mm::translated_byte_buffer;
 use crate::task::current_user_token;
 
 const FD_STDOUT: usize = 1;
