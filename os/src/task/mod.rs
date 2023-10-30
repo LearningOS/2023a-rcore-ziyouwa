@@ -14,8 +14,13 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use core::u8;
+
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::{VirtAddr, MapPermission};
 use crate::sync::UPSafeCell;
+use crate::syscall::TaskInfo;
+use crate::timer::get_time_ms;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
 use lazy_static::*;
@@ -78,7 +83,9 @@ impl TaskManager {
     fn run_first_task(&self) -> ! {
         let mut inner = self.inner.exclusive_access();
         let next_task = &mut inner.tasks[0];
-        next_task.task_status = TaskStatus::Running;
+        let task_info = &mut next_task.task_info;
+        task_info.status = TaskStatus::Running;
+        task_info.time = get_time_ms();
         let next_task_cx_ptr = &next_task.task_cx as *const TaskContext;
         drop(inner);
         let mut _unused = TaskContext::zero_init();
@@ -93,14 +100,17 @@ impl TaskManager {
     fn mark_current_suspended(&self) {
         let mut inner = self.inner.exclusive_access();
         let cur = inner.current_task;
-        inner.tasks[cur].task_status = TaskStatus::Ready;
+        let task_info = &mut inner.tasks[cur].task_info;
+        task_info.status = TaskStatus::Ready;
     }
 
     /// Change the status of current `Running` task into `Exited`.
     fn mark_current_exited(&self) {
         let mut inner = self.inner.exclusive_access();
         let cur = inner.current_task;
-        inner.tasks[cur].task_status = TaskStatus::Exited;
+        let task_info = &mut inner.tasks[cur].task_info;
+        task_info.status = TaskStatus::Exited;
+        task_info.time = get_time_ms() - task_info.time;
     }
 
     /// Find next task to run and return task id.
@@ -111,7 +121,7 @@ impl TaskManager {
         let current = inner.current_task;
         (current + 1..current + self.num_app + 1)
             .map(|id| id % self.num_app)
-            .find(|id| inner.tasks[*id].task_status == TaskStatus::Ready)
+            .find(|id| inner.tasks[*id].task_info.status == TaskStatus::Ready)
     }
 
     /// Get the current 'Running' task's token.
@@ -139,8 +149,11 @@ impl TaskManager {
         if let Some(next) = self.find_next_task() {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
-            inner.tasks[next].task_status = TaskStatus::Running;
+            // let task_info = &mut inner.tasks[current].task_info;
+            // task_info.status = TaskStatus::Ready;
             inner.current_task = next;
+            let task_info = &mut inner.tasks[next].task_info;
+            task_info.status = TaskStatus::Running;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
             drop(inner);
@@ -152,6 +165,47 @@ impl TaskManager {
         } else {
             panic!("All applications completed!");
         }
+    }
+
+    
+    /// increase syscall times
+    fn increase_syscall_count(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let taskinfo = &mut inner.tasks[current].task_info;
+        taskinfo.syscall_times[syscall_id] += 1;
+        // debug!("id:{}, {}", syscall_id, taskinfo.syscall_times[syscall_id]);
+        drop(inner);
+    }
+
+    /// return current taskinfo
+    fn get_task_info(&self) -> TaskInfo {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+
+        // 利用taskinfo的Copy特性，这里实际返回的是taskinfo的副本，所以后续的修改
+        // 并不影响原task_info.time的值，current task的time字段始终保留的是程序第一次运行的时间
+        let taskinfo = inner.tasks[current].task_info;
+
+        drop(inner);
+        taskinfo
+    }
+
+    /// map memory
+    fn memory_map(&self, start: usize, len: usize, port: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+
+        let current = inner.current_task;
+        let memset = &mut inner.tasks[current].memory_set;
+
+        let end = start + len;
+        if let Some(permission) = MapPermission::from_bits((port & 0x7) as u8){
+            memset.insert_framed_area(VirtAddr::from(start), VirtAddr::from(end), permission); 
+        } else {
+            return  -1;
+        };   
+
+        0
     }
 }
 
@@ -188,6 +242,16 @@ pub fn exit_current_and_run_next() {
     run_next_task();
 }
 
+/// increase syscall times
+pub fn increase_syscall_count(syscall_id: usize) {
+    TASK_MANAGER.increase_syscall_count(syscall_id);
+}
+
+/// get current task's infomation
+pub fn take_current_taskinfo() -> TaskInfo {
+    TASK_MANAGER.get_task_info()
+}
+
 /// Get the current 'Running' task's token.
 pub fn current_user_token() -> usize {
     TASK_MANAGER.get_current_token()
@@ -201,4 +265,8 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+pub fn task_memory_map(start: usize, len: usize, port: usize) -> isize {
+    TASK_MANAGER.memory_map(start, len, port)
 }
