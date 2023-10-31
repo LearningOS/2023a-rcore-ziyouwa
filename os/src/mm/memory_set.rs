@@ -51,6 +51,22 @@ impl MemorySet {
     pub fn token(&self) -> usize {
         self.page_table.token()
     }
+    /// unmap MapArea
+    pub fn unmap(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        match self
+            .areas
+            .iter_mut()
+            .find(|area| area.vpn_range.get_start() == start_va.floor())
+        {
+            Some(area) => {
+                for vpn in VPNRange::new(area.vpn_range.get_start(), end_va.ceil()) {
+                    area.unmap_one(&mut self.page_table, vpn);
+                }
+                0
+            }
+            None => -1,
+        }
+    }
     /// Assume that no conflicts.
     pub fn insert_framed_area(
         &mut self,

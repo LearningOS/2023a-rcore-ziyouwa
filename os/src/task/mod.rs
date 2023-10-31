@@ -17,7 +17,7 @@ mod task;
 use core::u8;
 
 use crate::loader::{get_app_data, get_num_app};
-use crate::mm::{VirtAddr, MapPermission};
+use crate::mm::{MapPermission, VirtAddr};
 use crate::sync::UPSafeCell;
 use crate::syscall::TaskInfo;
 use crate::timer::get_time_ms;
@@ -154,6 +154,9 @@ impl TaskManager {
             inner.current_task = next;
             let task_info = &mut inner.tasks[next].task_info;
             task_info.status = TaskStatus::Running;
+            if task_info.time == 0 {
+                task_info.time = get_time_ms();
+            }
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
             drop(inner);
@@ -167,7 +170,6 @@ impl TaskManager {
         }
     }
 
-    
     /// increase syscall times
     fn increase_syscall_count(&self, syscall_id: usize) {
         let mut inner = self.inner.exclusive_access();
@@ -175,7 +177,6 @@ impl TaskManager {
         let taskinfo = &mut inner.tasks[current].task_info;
         taskinfo.syscall_times[syscall_id] += 1;
         // debug!("id:{}, {}", syscall_id, taskinfo.syscall_times[syscall_id]);
-        drop(inner);
     }
 
     /// return current taskinfo
@@ -187,7 +188,6 @@ impl TaskManager {
         // 并不影响原task_info.time的值，current task的time字段始终保留的是程序第一次运行的时间
         let taskinfo = inner.tasks[current].task_info;
 
-        drop(inner);
         taskinfo
     }
 
@@ -199,13 +199,26 @@ impl TaskManager {
         let memset = &mut inner.tasks[current].memory_set;
 
         let end = start + len;
-        if let Some(permission) = MapPermission::from_bits((port & 0x7) as u8){
-            memset.insert_framed_area(VirtAddr::from(start), VirtAddr::from(end), permission); 
-        } else {
-            return  -1;
-        };   
+        match MapPermission::from_bits((port & 0x7) as u8) {
+            Some(permission) => {
+                memset.insert_framed_area(
+                    VirtAddr::from(start),
+                    VirtAddr::from(end),
+                    permission | MapPermission::U,
+                );
+                0
+            }
+            None => -1,
+        }
+    }
+    /// unmap memory
+    fn memory_unmap(&self, start: usize, len: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
 
-        0
+        let current = inner.current_task;
+        let memset = &mut inner.tasks[current].memory_set;
+
+        memset.unmap(VirtAddr(start), VirtAddr(start + len))
     }
 }
 
@@ -266,7 +279,11 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
 }
-
+/// take memory map
 pub fn task_memory_map(start: usize, len: usize, port: usize) -> isize {
     TASK_MANAGER.memory_map(start, len, port)
+}
+/// unmap memory map
+pub fn memory_unmap(start: usize, len: usize) -> isize {
+    TASK_MANAGER.memory_unmap(start, len)
 }
