@@ -14,8 +14,7 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use core::u8;
-
+use crate::config::MEMORY_END;
 use crate::loader::{get_app_data, get_num_app};
 use crate::mm::{MapPermission, VirtAddr};
 use crate::sync::UPSafeCell;
@@ -192,24 +191,40 @@ impl TaskManager {
     }
 
     /// map memory
-    fn memory_map(&self, start: usize, len: usize, port: usize) -> isize {
+    fn memory_map(&self, start: usize, len: usize, prot: usize) -> isize {
+        if (prot & 0x7) == 0 || (prot & !0x7) != 0 {
+            info!(" Permisson is error: {:b}.", prot);
+            return -1;
+        }
+        let start_va = VirtAddr::from(start);
+        let end_va = VirtAddr::from(start_va.0 + len);
+
+        if end_va.0 > MEMORY_END {
+            info!(
+                " Exceeded maximum memory limit: Request: {:x}, Max: {:x}",
+                end_va.0, MEMORY_END
+            );
+            return -1;
+        }
+
         let mut inner = self.inner.exclusive_access();
 
         let current = inner.current_task;
         let memset = &mut inner.tasks[current].memory_set;
 
-        let end = start + len;
-        match MapPermission::from_bits((port & 0x7) as u8) {
-            Some(permission) => {
-                memset.insert_framed_area(
-                    VirtAddr::from(start),
-                    VirtAddr::from(end),
-                    permission | MapPermission::U,
-                );
-                0
-            }
-            None => -1,
+        let mut perm = MapPermission::U;
+        let prot = prot & 0x7;
+
+        if 0x1 & prot != 0 {
+            perm |= MapPermission::R;
         }
+        if 0x2 & prot != 0 {
+            perm |= MapPermission::W;
+        }
+        if 0x4 & prot != 0 {
+            perm |= MapPermission::X;
+        }
+        memset.insert_framed_area(start_va, end_va, perm)
     }
     /// unmap memory
     fn memory_unmap(&self, start: usize, len: usize) -> isize {
@@ -280,8 +295,8 @@ pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
 }
 /// take memory map
-pub fn task_memory_map(start: usize, len: usize, port: usize) -> isize {
-    TASK_MANAGER.memory_map(start, len, port)
+pub fn task_memory_map(start: usize, len: usize, prot: usize) -> isize {
+    TASK_MANAGER.memory_map(start, len, prot)
 }
 /// unmap memory map
 pub fn memory_unmap(start: usize, len: usize) -> isize {

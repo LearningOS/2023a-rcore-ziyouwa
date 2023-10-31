@@ -1,11 +1,14 @@
 //! Types related to task management
 use super::TaskContext;
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{TRAP_CONTEXT_BASE, MAX_SYSCALL_NUM};
 use crate::mm::{
     kernel_stack_position, MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE,
 };
 
-use crate::{syscall::TaskInfo, trap::{trap_handler, TrapContext}};
+use crate::{
+    syscall::TaskInfo,
+    trap::{trap_handler, TrapContext},
+};
 
 /// The task control block (TCB) of a task.
 pub struct TaskControlBlock {
@@ -31,7 +34,7 @@ pub struct TaskControlBlock {
     pub program_brk: usize,
 
     /// Task info
-    pub task_info: TaskInfo, 
+    pub task_info: TaskInfo,
 }
 
 impl TaskControlBlock {
@@ -51,8 +54,6 @@ impl TaskControlBlock {
             .translate(VirtAddr::from(TRAP_CONTEXT_BASE).into())
             .unwrap()
             .ppn();
-        let task_info = TaskInfo::new();
-        // task_info.status = TaskStatus::Ready;
         // map a kernel-stack in kernel space
         let (kernel_stack_bottom, kernel_stack_top) = kernel_stack_position(app_id);
         KERNEL_SPACE.exclusive_access().insert_framed_area(
@@ -60,6 +61,14 @@ impl TaskControlBlock {
             kernel_stack_top.into(),
             MapPermission::R | MapPermission::W,
         );
+
+        // task_info.status = TaskStatus::Ready;
+        let task_info = TaskInfo {
+            status: TaskStatus::Ready,
+            syscall_times: [0; MAX_SYSCALL_NUM],
+            time: 0,
+        };
+
         let task_control_block = Self {
             task_cx: TaskContext::goto_trap_return(kernel_stack_top),
             memory_set,
@@ -78,6 +87,7 @@ impl TaskControlBlock {
             kernel_stack_top,
             trap_handler as usize,
         );
+        
         task_control_block
     }
     /// change the location of the program break. return None if failed.

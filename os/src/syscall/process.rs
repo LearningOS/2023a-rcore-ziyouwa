@@ -31,17 +31,6 @@ pub struct TaskInfo {
     pub time: usize,
 }
 
-impl TaskInfo {
-    /// create new TaskInfo instent
-    pub fn new() -> Self {
-        Self {
-            status: TaskStatus::UnInit,
-            syscall_times: [0; MAX_SYSCALL_NUM],
-            time: 0,
-        }
-    }
-}
-
 /// task exits and submit an exit code
 pub fn sys_exit(_exit_code: i32) -> ! {
     trace!("kernel: sys_exit");
@@ -62,12 +51,13 @@ pub fn sys_yield() -> isize {
 pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
 
-    let ts = translated_from_buffer::<TimeVal>(current_user_token(), ts as *const _);
+    let t = translated_from_buffer::<TimeVal>(current_user_token(), ts);
 
     let us = get_time_us();
-    ts.sec = us / 1_000_000;
-    ts.usec = us % 1_000_000;
-
+    *t = TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
     0
 }
 
@@ -77,17 +67,20 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
     trace!("kernel: sys_task_info NOT IMPLEMENTED YET!");
 
-    let t = translated_from_buffer::<TaskInfo>(current_user_token(), ti as *const _);
+    let t = translated_from_buffer::<TaskInfo>(current_user_token(), ti);
 
     *t = take_current_taskinfo();
+    info!("time: {}", t.time);
     t.time = get_time_ms() - t.time;
+    info!("Now, time: {}", t.time);
     0
 }
 
 /// YOUR JOB: Implement mmap.
-pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
+pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
     trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    task_memory_map(start, len, port)
+
+    task_memory_map(start, len, prot)
 }
 
 /// YOUR JOB: Implement munmap.

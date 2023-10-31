@@ -1,10 +1,8 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
 
-use core::mem::size_of;
+use crate::mm::PhysAddr;
 
-use super::{
-    frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum,
-};
+use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::*;
@@ -178,16 +176,14 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
 }
 
 /// Translate&Copy T with LENGTH len to a mutable T through page table
-pub fn translated_from_buffer<T>(token: usize, ptr: *const T) -> &'static mut T {
+pub fn translated_from_buffer<T>(token: usize, ptr: *mut T) -> &'static mut T {
     let page_table = PageTable::from_token(token);
 
-    let start = ptr as usize;
-    let vpn = VirtAddr::from(start).floor();
-    let mut ppn = page_table.translate(vpn).unwrap().ppn();
+    let virt_addr = VirtAddr::from(ptr as usize);
+    let vpn = virt_addr.floor();
 
-    let end = start + size_of::<T>();
-    let end_va = VirtAddr::from(end);
-    ppn.0 += end_va.page_offset();
-
+    let mut ppn: PhysAddr = page_table.translate(vpn).unwrap().ppn().into();
+    ppn.0 |= virt_addr.page_offset();
+    trace!("virt_addr: {:x}, ppn end: {:x}", virt_addr.0 , ppn.0);
     ppn.get_mut()
 }
