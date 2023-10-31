@@ -111,6 +111,11 @@ impl TaskControlBlock {
             None
         }
     }
+
+    /// memory map for memset
+    pub fn memory_map(&mut self, start: usize, len: usize, permisson: MapPermission) -> isize{
+        self.memory_set.memory_map(start, len, permisson)
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]

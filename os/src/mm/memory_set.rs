@@ -68,7 +68,9 @@ impl MemorySet {
         }
     }
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) -> isize {
-        if map_area.map(&mut self.page_table) == -1 { return  -1;}
+        if map_area.map(&mut self.page_table) == -1 {
+            return -1;
+        }
         if let Some(data) = data {
             map_area.copy_data(&mut self.page_table, data);
         }
@@ -279,6 +281,31 @@ impl MemorySet {
             false
         }
     }
+    /// Map MapArea
+    pub fn memory_map(&mut self, start: usize, len: usize, permisson: MapPermission) -> isize {
+        let start_va = VirtAddr::from(start);
+        let end_va = VirtAddr::from(start_va.0 + len);
+
+        if end_va.0 > MEMORY_END {
+            info!(
+                " Exceeded maximum memory limit: Request: {:x}, Max: {:x}",
+                end_va.0, MEMORY_END
+            );
+            return -1;
+        }
+
+        if let Some(_) = self
+            .areas
+            .iter()
+            .find(|a| a.vpn_range.get_start() == start_va.floor())
+        {
+            // 查找data_frames确保没有映射过
+            debug!("{:x} is mapped.", start_va.0);
+            return -1;
+        }
+        let map_area = MapArea::new(start_va, end_va, MapType::Framed, permisson);
+        self.push(map_area, None)
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
@@ -328,11 +355,6 @@ impl MapArea {
     }
     pub fn map(&mut self, page_table: &mut PageTable) -> isize {
         for vpn in self.vpn_range {
-            // 查找data_frames确保没有映射过
-            if self.data_frames.contains_key(&vpn) {
-                info!("{:x} is mapped.", vpn.0);
-                return -1;
-            }
             self.map_one(page_table, vpn);
         }
         0

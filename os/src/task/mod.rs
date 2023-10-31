@@ -14,7 +14,6 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::MEMORY_END;
 use crate::loader::{get_app_data, get_num_app};
 use crate::mm::{MapPermission, VirtAddr};
 use crate::sync::UPSafeCell;
@@ -196,22 +195,6 @@ impl TaskManager {
             info!(" Permisson is error: {:b}.", prot);
             return -1;
         }
-        let start_va = VirtAddr::from(start);
-        let end_va = VirtAddr::from(start_va.0 + len);
-
-        if end_va.0 > MEMORY_END {
-            info!(
-                " Exceeded maximum memory limit: Request: {:x}, Max: {:x}",
-                end_va.0, MEMORY_END
-            );
-            return -1;
-        }
-
-        let mut inner = self.inner.exclusive_access();
-
-        let current = inner.current_task;
-        let memset = &mut inner.tasks[current].memory_set;
-
         let mut perm = MapPermission::U;
         let prot = prot & 0x7;
 
@@ -224,7 +207,11 @@ impl TaskManager {
         if 0x4 & prot != 0 {
             perm |= MapPermission::X;
         }
-        memset.insert_framed_area(start_va, end_va, perm)
+
+        let mut inner = self.inner.exclusive_access();
+
+        let current = inner.current_task;
+        inner.tasks[current].memory_map(start, len, perm)
     }
     /// unmap memory
     fn memory_unmap(&self, start: usize, len: usize) -> isize {

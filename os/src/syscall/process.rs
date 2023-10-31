@@ -78,14 +78,14 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
 
 /// YOUR JOB: Implement mmap.
 pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
-    trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
+    trace!("kernel: sys_mmap: {:x}, len: {}, prot: {:b}", start, len, prot);
 
     task_memory_map(start, len, prot)
 }
 
 /// YOUR JOB: Implement munmap.
 pub fn sys_munmap(start: usize, len: usize) -> isize {
-    trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
+    trace!("kernel: sys_munmap: {:x}, len: {}", start, len);
     memory_unmap(start, len)
 }
 /// change data segment size
