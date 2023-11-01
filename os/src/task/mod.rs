@@ -15,7 +15,6 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
-use crate::mm::MapPermission;
 use crate::sync::UPSafeCell;
 use crate::syscall::TaskInfo;
 use crate::timer::get_time_ms;
@@ -191,27 +190,11 @@ impl TaskManager {
 
     /// map memory
     fn memory_map(&self, start: usize, len: usize, prot: usize) -> isize {
-        if (prot & 0x7) == 0 || (prot & !0x7) != 0 {
-            debug!(" Permisson is error: {:b}.", prot);
-            return -1;
-        }
-        let mut perm = MapPermission::U;
-        let prot = prot & 0x7;
-
-        if 0x1 & prot != 0 {
-            perm |= MapPermission::R;
-        }
-        if 0x2 & prot != 0 {
-            perm |= MapPermission::W;
-        }
-        if 0x4 & prot != 0 {
-            perm |= MapPermission::X;
-        }
 
         let mut inner = self.inner.exclusive_access();
 
         let current = inner.current_task;
-        inner.tasks[current].memory_map(start, len, perm)
+        inner.tasks[current].memory_map(start, len, prot)
     }
     /// unmap memory
     fn memory_unmap(&self, start: usize, len: usize) -> isize {
@@ -280,7 +263,7 @@ pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
 }
 /// take memory map
-pub fn task_memory_map(start: usize, len: usize, prot: usize) -> isize {
+pub fn memory_map(start: usize, len: usize, prot: usize) -> isize {
     TASK_MANAGER.memory_map(start, len, prot)
 }
 /// unmap memory map

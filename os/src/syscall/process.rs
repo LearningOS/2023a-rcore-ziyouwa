@@ -1,10 +1,12 @@
 //! Process management syscalls
+use core::fmt::Display;
+
 use crate::{
     config::{MAX_SYSCALL_NUM, PAGE_SIZE},
     mm::translated_from_buffer,
     task::{
         change_program_brk, current_user_token, exit_current_and_run_next, memory_unmap,
-        suspend_current_and_run_next, take_current_taskinfo, task_memory_map, TaskStatus,
+        suspend_current_and_run_next, take_current_taskinfo, TaskStatus, memory_map,
     },
     timer::{get_time_ms, get_time_us},
 };
@@ -29,6 +31,13 @@ pub struct TaskInfo {
     pub syscall_times: [u32; MAX_SYSCALL_NUM],
     /// Total running time of task
     pub time: usize,
+}
+
+impl Display for TaskInfo {
+    fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        println!("Taskinfo: time {}", self.time);
+        Ok(())
+    }
 }
 
 /// task exits and submit an exit code
@@ -70,7 +79,7 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
     let t = translated_from_buffer::<TaskInfo>(current_user_token(), ti);
 
     *t = take_current_taskinfo();
-    info!("time: {}", t.time);
+    warn!("time: {}", t.time);
     t.time = get_time_ms() - t.time;
     info!("Now, time: {}", t.time);
     0
@@ -84,7 +93,7 @@ pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
         info!("start: {:x} is not aligned!", start);
         return -1;
     }
-    task_memory_map(start, len, prot)
+    memory_map(start, len, prot)
 }
 
 /// YOUR JOB: Implement munmap.
