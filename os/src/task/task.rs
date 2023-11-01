@@ -1,9 +1,10 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{MAX_SYSCALL_NUM, TRAP_CONTEXT_BASE};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
+use crate::syscall::TaskInfo;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
@@ -34,6 +35,11 @@ impl TaskControlBlock {
         let inner = self.inner_exclusive_access();
         inner.memory_set.token()
     }
+    /// Get the mutable reference of the taskinfo
+    pub fn get_task_info_mut(&self) -> *mut TaskInfo {
+        let inner = self.inner_exclusive_access();
+        &inner.task_info as *const _ as *mut TaskInfo        
+    }
 }
 
 pub struct TaskControlBlockInner {
@@ -48,7 +54,7 @@ pub struct TaskControlBlockInner {
     pub task_cx: TaskContext,
 
     /// Maintain the execution status of the current process
-    pub task_status: TaskStatus,
+    pub task_info: TaskInfo,
 
     /// Application address space
     pub memory_set: MemorySet,
@@ -80,7 +86,7 @@ impl TaskControlBlockInner {
         self.memory_set.token()
     }
     fn get_status(&self) -> TaskStatus {
-        self.task_status
+        self.task_info.status
     }
     pub fn is_zombie(&self) -> bool {
         self.get_status() == TaskStatus::Zombie
@@ -111,7 +117,11 @@ impl TaskControlBlock {
                     trap_cx_ppn,
                     base_size: user_sp,
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
-                    task_status: TaskStatus::Ready,
+                    task_info: TaskInfo {
+                        status: TaskStatus::Ready,
+                        syscall_times: [0; MAX_SYSCALL_NUM],
+                        time: 0,
+                    },
                     memory_set,
                     parent: None,
                     children: Vec::new(),
@@ -184,7 +194,11 @@ impl TaskControlBlock {
                     trap_cx_ppn,
                     base_size: parent_inner.base_size,
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
-                    task_status: TaskStatus::Ready,
+                    task_info: TaskInfo {
+                        status: TaskStatus::Ready,
+                        syscall_times: [0; MAX_SYSCALL_NUM],
+                        time: 0,
+                    },
                     memory_set,
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
@@ -235,6 +249,17 @@ impl TaskControlBlock {
         } else {
             None
         }
+    }
+
+    /// take memory map
+    pub fn memory_map(&self, start: usize, len: usize, prot: usize) -> isize {
+        let inner = &mut self.inner_exclusive_access().memory_set;
+        inner.memory_map(start, len, prot)
+    }
+    /// unmap memory map
+    pub fn memory_unmap(&self, start: usize, len: usize) -> isize {
+        let inner = &mut self.inner_exclusive_access().memory_set;
+        inner.memory_unmap(start, len)
     }
 }
 

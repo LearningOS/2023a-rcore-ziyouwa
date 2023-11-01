@@ -300,6 +300,108 @@ impl MemorySet {
             false
         }
     }
+    /// Map MapArea
+    pub fn memory_map(&mut self, start: usize, len: usize, prot: usize) -> isize {
+        if (prot & 0x7) == 0 || (prot & !0x7) != 0 {
+            debug!(" Permisson is error: {:b}.", prot);
+            return -1;
+        }
+        let mut perm = MapPermission::U;
+        let prot = prot & 0x7;
+
+        if 0x1 & prot != 0 {
+            perm |= MapPermission::R;
+        }
+        if 0x2 & prot != 0 {
+            perm |= MapPermission::W;
+        }
+        if 0x4 & prot != 0 {
+            perm |= MapPermission::X;
+        }
+
+        let start_va = VirtAddr::from(start);
+        let end_va = VirtAddr::from(start_va.0 + len);
+
+        if end_va.0 > MEMORY_END {
+            info!(
+                " Exceeded maximum memory limit: Request: {:x}, Max: {:x}",
+                end_va.0, MEMORY_END
+            );
+            return -1;
+        }
+
+        if let Some(_) = self.areas.iter().find(|a| {
+            debug!(
+                "start: {:x}, end: {:x}, range_start : {:x}, range_end : {:x}",
+                start_va.floor().0,
+                end_va.ceil().0,
+                a.vpn_range.get_start().0,
+                a.vpn_range.get_end().0
+            );
+            a.vpn_range.get_start() < end_va.ceil() && start_va.floor() < a.vpn_range.get_end()
+        }) {
+            // 查找data_frames确保没有映射过
+            warn!("{:x} is mapped.", start_va.0);
+            return -1;
+        }
+        let map_area = MapArea::new(start_va, end_va, MapType::Framed, perm);
+        self.push(map_area, None);
+        0
+    }
+
+    /// UnMap memory map
+    pub fn memory_unmap(&mut self, start: usize, len: usize) -> isize {
+        debug!(
+            "MemorySet: memory_unmap: start: {:x}, len: {}, areas_len: {}",
+            start,
+            len,
+            self.areas.len()
+        );
+
+        let start_va = VirtAddr(start).floor();
+        let end_va = VirtAddr(start + len).ceil();
+
+        if let Some(area) = self.areas.iter_mut().find(|area| {
+            debug!(
+                "MemorySet-unmap: start: {:x}, end: {:x}, range_start : {:x}, range_end : {:x}",
+                start_va.0,
+                end_va.0,
+                area.vpn_range.get_start().0,
+                area.vpn_range.get_end().0
+            );
+            area.vpn_range.get_start() == start_va && area.vpn_range.get_end() == end_va
+        }) {
+            debug!(
+                "MemorySet-unmap: found area: range_start : {:x}, range_end : {:x}",
+                area.vpn_range.get_start().0,
+                area.vpn_range.get_end().0
+            );
+            for vpn in area.vpn_range {
+                area.unmap_one(&mut self.page_table, vpn);
+            }
+        } else {
+            return -1;
+        }
+
+        debug!(
+            "MemorySet: memory_unmap: Before remove ,areas_len: {}",
+            self.areas.len()
+        );
+
+        self.areas.retain(|e| e.vpn_range.get_start() != start_va);
+        // for e in self.areas.iter() {
+        //     debug!(
+        //         "Unmaped area: start: {:x}, end: {:x}",
+        //         e.vpn_range.get_start().0,
+        //         e.vpn_range.get_end().0
+        //     );
+        // }
+        debug!(
+            "MemorySet: memory_unmap: After remove ,areas_len: {}",
+            self.areas.len()
+        );
+        0
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
@@ -330,7 +432,7 @@ impl MapArea {
             vpn_range: VPNRange::new(another.vpn_range.get_start(), another.vpn_range.get_end()),
             data_frames: BTreeMap::new(),
             map_type: another.map_type,
-            map_perm: another.map_perm,
+            map_perm: another.map_perm.clone(),
         }
     }
     pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
@@ -350,7 +452,16 @@ impl MapArea {
     }
     pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
         if self.map_type == MapType::Framed {
+            debug!(
+                "unmap_one: vpn: {:x}, frames len: {}",
+                vpn.0,
+                self.data_frames.len()
+            );
             self.data_frames.remove(&vpn);
+            debug!(
+                "unmap_one: After remove, frames len: {}",
+                self.data_frames.len()
+            );
         }
         page_table.unmap(vpn);
     }
@@ -420,6 +531,25 @@ bitflags! {
         const X = 1 << 3;
         ///Accessible in U mode
         const U = 1 << 4;
+    }
+}
+
+impl Clone for MapPermission {
+    fn clone(&self) -> Self {
+        let mut new_map_perm = MapPermission::empty();
+        if self.contains(MapPermission::R) {
+            new_map_perm.insert(MapPermission::R);
+        }
+        if self.contains(MapPermission::W) {
+            new_map_perm.insert(MapPermission::W);
+        }
+        if self.contains(MapPermission::X) {
+            new_map_perm.insert(MapPermission::X);
+        }
+        if self.contains(MapPermission::U) {
+            new_map_perm.insert(MapPermission::U);
+        }
+        new_map_perm
     }
 }
 
