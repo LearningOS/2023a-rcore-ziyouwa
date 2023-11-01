@@ -1,6 +1,6 @@
 //! Process management syscalls
 use crate::{
-    config::MAX_SYSCALL_NUM,
+    config::{MAX_SYSCALL_NUM, PAGE_SIZE},
     mm::translated_from_buffer,
     task::{
         change_program_brk, current_user_token, exit_current_and_run_next, memory_unmap,
@@ -78,14 +78,22 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
 
 /// YOUR JOB: Implement mmap.
 pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
-    trace!("kernel: sys_mmap: {:x}, len: {}, prot: {:b}", start, len, prot);
+    trace!( "kernel: sys_mmap: {:x}, len: {}, prot: {:b}", start, len, prot );
 
+    if start % PAGE_SIZE != 0 {
+        info!("start: {:x} is not aligned!", start);
+        return -1;
+    }
     task_memory_map(start, len, prot)
 }
 
 /// YOUR JOB: Implement munmap.
 pub fn sys_munmap(start: usize, len: usize) -> isize {
     trace!("kernel: sys_munmap: {:x}, len: {}", start, len);
+    if start % PAGE_SIZE != 0 {
+        info!("start: {:x} is not aligned!", start);
+        return -1;
+    }
     memory_unmap(start, len)
 }
 /// change data segment size

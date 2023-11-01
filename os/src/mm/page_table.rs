@@ -117,6 +117,7 @@ impl PageTable {
         let mut result: Option<&mut PageTableEntry> = None;
         for (i, idx) in idxs.iter().enumerate() {
             let pte = &mut ppn.get_pte_array()[*idx];
+            trace!("find_pte: {:x}", pte.bits);
             if i == 2 {
                 result = Some(pte);
                 break;
@@ -139,8 +140,10 @@ impl PageTable {
     #[allow(unused)]
     pub fn unmap(&mut self, vpn: VirtPageNum) {
         let pte = self.find_pte(vpn).unwrap();
+        debug!("PageTable-unmap: vpn: {:x}, pte: {:x}", vpn.0, pte.bits);
         assert!(pte.is_valid(), "vpn {:?} is invalid before unmapping", vpn);
         *pte = PageTableEntry::empty();
+        debug!("PageTable-unmap: After remove. vpn: {:x}, pte: {:x}", vpn.0, pte.bits);
     }
     /// get the page table entry from the virtual page number
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
@@ -184,6 +187,6 @@ pub fn translated_from_buffer<T>(token: usize, ptr: *mut T) -> &'static mut T {
 
     let mut ppn: PhysAddr = page_table.translate(vpn).unwrap().ppn().into();
     ppn.0 |= virt_addr.page_offset();
-    trace!("virt_addr: {:x}, ppn end: {:x}", virt_addr.0 , ppn.0);
+    debug!("translated_from_buffer: virt_addr: {:x}, ppn: {:x}", virt_addr.0 , ppn.0);
     ppn.get_mut()
 }

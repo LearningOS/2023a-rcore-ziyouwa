@@ -116,6 +116,10 @@ impl TaskControlBlock {
     pub fn memory_map(&mut self, start: usize, len: usize, permisson: MapPermission) -> isize{
         self.memory_set.memory_map(start, len, permisson)
     }
+
+    pub(crate) fn memory_unmap(&mut self, start: usize, len: usize) -> isize {
+        self.memory_set.memory_unmap(start, len)
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]

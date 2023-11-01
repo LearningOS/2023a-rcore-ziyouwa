@@ -15,7 +15,7 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
-use crate::mm::{MapPermission, VirtAddr};
+use crate::mm::MapPermission;
 use crate::sync::UPSafeCell;
 use crate::syscall::TaskInfo;
 use crate::timer::get_time_ms;
@@ -192,7 +192,7 @@ impl TaskManager {
     /// map memory
     fn memory_map(&self, start: usize, len: usize, prot: usize) -> isize {
         if (prot & 0x7) == 0 || (prot & !0x7) != 0 {
-            info!(" Permisson is error: {:b}.", prot);
+            debug!(" Permisson is error: {:b}.", prot);
             return -1;
         }
         let mut perm = MapPermission::U;
@@ -218,9 +218,7 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
 
         let current = inner.current_task;
-        let memset = &mut inner.tasks[current].memory_set;
-
-        memset.unmap(VirtAddr(start), VirtAddr(start + len))
+        inner.tasks[current].memory_unmap(start, len)
     }
 }
 

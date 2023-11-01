@@ -53,12 +53,22 @@ impl MemorySet {
     }
     /// unmap MapArea
     pub fn unmap(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
-        match self
-            .areas
-            .iter_mut()
-            .find(|area| area.vpn_range.get_start() == start_va.floor())
-        {
+        match self.areas.iter_mut().find(|area| {
+            debug!(
+                "MemorySet-unmap: start: {:x}, end: {:x}, range_start : {:x}, range_end : {:x}",
+                start_va.floor().0,
+                end_va.ceil().0,
+                area.vpn_range.get_start().0,
+                area.vpn_range.get_end().0
+            );
+            area.vpn_range.get_start() == start_va.floor()
+        }) {
             Some(area) => {
+                debug!(
+                    "MemorySet-unmap: found area: range_start : {:x}, range_end : {:x}",
+                    area.vpn_range.get_start().0,
+                    area.vpn_range.get_end().0
+                );
                 for vpn in VPNRange::new(area.vpn_range.get_start(), end_va.ceil()) {
                     area.unmap_one(&mut self.page_table, vpn);
                 }
@@ -67,15 +77,12 @@ impl MemorySet {
             None => -1,
         }
     }
-    fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) -> isize {
-        if map_area.map(&mut self.page_table) == -1 {
-            return -1;
-        }
+    fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
+        map_area.map(&mut self.page_table);
         if let Some(data) = data {
             map_area.copy_data(&mut self.page_table, data);
         }
         self.areas.push(map_area);
-        0
     }
     /// Assume that no conflicts.
     pub fn insert_framed_area(
@@ -83,11 +90,11 @@ impl MemorySet {
         start_va: VirtAddr,
         end_va: VirtAddr,
         permission: MapPermission,
-    ) -> isize {
+    ) {
         self.push(
             MapArea::new(start_va, end_va, MapType::Framed, permission),
             None,
-        )
+        );
     }
     /// Mention that trampoline is not collected by areas.
     fn map_trampoline(&mut self) {
@@ -294,17 +301,40 @@ impl MemorySet {
             return -1;
         }
 
-        if let Some(_) = self
-            .areas
-            .iter()
-            .find(|a| a.vpn_range.get_start() == start_va.floor())
-        {
+        if let Some(_) = self.areas.iter().find(|a| {
+            debug!(
+                "start: {:x}, end: {:x}, range_start : {:x}, range_end : {:x}",
+                start_va.floor().0,
+                end_va.ceil().0,
+                a.vpn_range.get_start().0,
+                a.vpn_range.get_end().0
+            );
+            a.vpn_range.get_start() < end_va.ceil() && start_va.floor() < a.vpn_range.get_end()
+        }) {
             // 查找data_frames确保没有映射过
-            debug!("{:x} is mapped.", start_va.0);
+            warn!("{:x} is mapped.", start_va.0);
             return -1;
         }
         let map_area = MapArea::new(start_va, end_va, MapType::Framed, permisson);
-        self.push(map_area, None)
+        self.push(map_area, None);
+        0
+    }
+
+    /// UnMap memory map
+    pub fn memory_unmap(&mut self, start: usize, len: usize) -> isize {
+        debug!("MemorySet: memory_unmap: start: {:x}, len: {}, areas_len: {}", start, len, self.areas.len());
+
+        let start_va = VirtAddr(start).floor();
+        self.unmap(
+            VirtAddr::from(start_va),
+            VirtAddr(start + len).ceil().into(),
+        );
+        debug!("MemorySet: memory_unmap: Before remove ,areas_len: {}", self.areas.len());
+        self.areas.retain(|e| {
+            e.vpn_range.get_start() == start_va 
+        });
+        debug!("MemorySet: memory_unmap: After remove ,areas_len: {}", self.areas.len());
+        0
     }
 }
 /// map area structure, controls a contiguous piece of virtual memory
@@ -349,15 +379,16 @@ impl MapArea {
     #[allow(unused)]
     pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
         if self.map_type == MapType::Framed {
+            debug!("unmap_one: vpn: {:x}, frames len: {}", vpn.0, self.data_frames.len());
             self.data_frames.remove(&vpn);
+            debug!("unmap_one: After remove, frames len: {}", self.data_frames.len());
         }
         page_table.unmap(vpn);
     }
-    pub fn map(&mut self, page_table: &mut PageTable) -> isize {
+    pub fn map(&mut self, page_table: &mut PageTable) {
         for vpn in self.vpn_range {
             self.map_one(page_table, vpn);
         }
-        0
     }
     #[allow(unused)]
     pub fn unmap(&mut self, page_table: &mut PageTable) {
