@@ -7,7 +7,7 @@ use crate::{
     mm::{translated_refmut, translated_str},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next, memory_map,
-        memory_unmap, suspend_current_and_run_next, TaskControlBlock, TaskStatus,
+        memory_unmap, suspend_current_and_run_next, TaskStatus,
     },
     timer::{get_time_ms, get_time_us},
 };
@@ -206,36 +206,32 @@ pub fn sys_sbrk(size: i32) -> isize {
 /// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
 pub fn sys_spawn(path: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
+    debug!(
+        "kernel:pid[{}] sys_spawn {}",
+        current_task().unwrap().pid.0,
+        translated_str(current_user_token(), path)
     );
-
-    let task = current_task().unwrap();
-    let parent_inner = &mut task.inner_exclusive_access();
-
-    if parent_inner.task_info.status != TaskStatus::Running {
-        return -1;
-    }
-
     let real_path = translated_str(current_user_token(), path);
 
-    let new_task = if let Some(elf_data) = get_app_data_by_name(&real_path) {
-        Arc::new(TaskControlBlock::new(elf_data))
+    let app_data = if let Some(elf_data) = get_app_data_by_name(real_path.as_str()) {
+        elf_data
     } else {
         warn!("App[{}]: load app data failure.", &real_path);
         return -1;
     };
-    let pid = new_task.pid.0;
-    parent_inner.children.push(new_task.clone());
-    // modify kernel_sp in trap_cx
-    // **** access child PCB exclusively
-    let trap_cx = new_task.inner_exclusive_access().get_trap_cx();
-    trap_cx.x[10] = 0;
+
+    let task = current_task().unwrap();
+
+    if task.inner_exclusive_access().task_info.status != TaskStatus::Running {
+        return -1;
+    }
+    let new_task = task.spawn(app_data);
+    let pid = new_task.getpid() as isize;
+    debug!("new pid is {}",pid);
 
     add_task(new_task);
-    
-    pid as isize
+
+    pid
 }
 
 /// syscall ID：140
@@ -244,8 +240,9 @@ pub fn sys_spawn(path: *const u8) -> isize {
 /// 返回值：如果输入合法则返回 prio，否则返回 -1
 pub fn sys_set_priority(prio: isize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
+        "kernel:pid[{}] sys_set_priority {}",
+        current_task().unwrap().pid.0,
+        prio
     );
     if prio < 2 {
         return -1;
@@ -253,6 +250,6 @@ pub fn sys_set_priority(prio: isize) -> isize {
     // let prio_t = translated_refmut::<isize>(current_user_token(), prio as *mut isize ) ;
     let task = current_task().unwrap();
     // task.inner_exclusive_access().set_priority(*prio_t as usize);
-    task.inner_exclusive_access().set_priority(prio as usize);
-    0
+    let new_prio = task.inner_exclusive_access().set_priority(prio as usize);
+    new_prio
 }

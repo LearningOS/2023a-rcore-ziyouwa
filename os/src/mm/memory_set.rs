@@ -303,7 +303,7 @@ impl MemorySet {
     /// Map MapArea
     pub fn memory_map(&mut self, start: usize, len: usize, prot: usize) -> isize {
         if (prot & 0x7) == 0 || (prot & !0x7) != 0 {
-            debug!(" Permisson is error: {:b}.", prot);
+            trace!(" Permisson is error: {:b}.", prot);
             return -1;
         }
         let mut perm = MapPermission::U;
@@ -331,7 +331,7 @@ impl MemorySet {
         }
 
         if let Some(_) = self.areas.iter().find(|a| {
-            debug!(
+            trace!(
                 "start: {:x}, end: {:x}, range_start : {:x}, range_end : {:x}",
                 start_va.floor().0,
                 end_va.ceil().0,
@@ -351,7 +351,7 @@ impl MemorySet {
 
     /// UnMap memory map
     pub fn memory_unmap(&mut self, start: usize, len: usize) -> isize {
-        debug!(
+        trace!(
             "MemorySet: memory_unmap: start: {:x}, len: {}, areas_len: {}",
             start,
             len,
@@ -362,7 +362,7 @@ impl MemorySet {
         let end_va = VirtAddr(start + len).ceil();
 
         if let Some(area) = self.areas.iter_mut().find(|area| {
-            debug!(
+            trace!(
                 "MemorySet-unmap: start: {:x}, end: {:x}, range_start : {:x}, range_end : {:x}",
                 start_va.0,
                 end_va.0,
@@ -371,7 +371,7 @@ impl MemorySet {
             );
             area.vpn_range.get_start() == start_va && area.vpn_range.get_end() == end_va
         }) {
-            debug!(
+            trace!(
                 "MemorySet-unmap: found area: range_start : {:x}, range_end : {:x}",
                 area.vpn_range.get_start().0,
                 area.vpn_range.get_end().0
@@ -383,20 +383,20 @@ impl MemorySet {
             return -1;
         }
 
-        debug!(
+        trace!(
             "MemorySet: memory_unmap: Before remove ,areas_len: {}",
             self.areas.len()
         );
 
         self.areas.retain(|e| e.vpn_range.get_start() != start_va);
         // for e in self.areas.iter() {
-        //     debug!(
+        //     trace!(
         //         "Unmaped area: start: {:x}, end: {:x}",
         //         e.vpn_range.get_start().0,
         //         e.vpn_range.get_end().0
         //     );
         // }
-        debug!(
+        trace!(
             "MemorySet: memory_unmap: After remove ,areas_len: {}",
             self.areas.len()
         );
@@ -452,13 +452,13 @@ impl MapArea {
     }
     pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
         if self.map_type == MapType::Framed {
-            debug!(
+            trace!(
                 "unmap_one: vpn: {:x}, frames len: {}",
                 vpn.0,
                 self.data_frames.len()
             );
             self.data_frames.remove(&vpn);
-            debug!(
+            trace!(
                 "unmap_one: After remove, frames len: {}",
                 self.data_frames.len()
             );

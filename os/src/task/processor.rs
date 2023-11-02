@@ -51,7 +51,7 @@ impl Processor {
         let binding = self.current().unwrap();
         let inner = &mut binding.inner_exclusive_access();
         inner.task_info.syscall_times[syscall_id] += 1;
-        // debug!("id:{}, {}", syscall_id, taskinfo.syscall_times[syscall_id]);
+        // trace!("id:{}, {}", syscall_id, taskinfo.syscall_times[syscall_id]);
     }
 }
 
@@ -71,6 +71,8 @@ pub fn run_tasks() {
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_info.status = TaskStatus::Running;
             task_inner.task_info.time = get_time_ms();
+            task_inner.set_stride();
+            debug!("Pid: {}, stride: {}", task.getpid(), task_inner.stride);
             // release coming task_inner manually
             drop(task_inner);
             // release coming task TCB manually
@@ -139,5 +141,5 @@ pub fn increase_syscall_count(syscall_id: usize) {
     let binding = current_task().unwrap();
     let inner = &mut binding.inner_exclusive_access();
     inner.task_info.syscall_times[syscall_id] += 1;
-    // debug!("id:{}, {}", syscall_id, taskinfo.syscall_times[syscall_id]);
+    // trace!("id:{}, {}", syscall_id, taskinfo.syscall_times[syscall_id]);
 }
