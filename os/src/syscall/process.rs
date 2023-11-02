@@ -6,9 +6,10 @@ use crate::{
     loader::get_app_data_by_name,
     mm::{translated_refmut, translated_str},
     task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus, memory_map, memory_unmap,
-    }, timer::{get_time_us, get_time_ms},
+        add_task, current_task, current_user_token, exit_current_and_run_next, memory_map,
+        memory_unmap, suspend_current_and_run_next, TaskControlBlock, TaskStatus,
+    },
+    timer::{get_time_ms, get_time_us},
 };
 
 #[repr(C)]
@@ -81,7 +82,11 @@ pub fn sys_exec(path: *const u8) -> isize {
 /// If there is not a child process whose pid is same as given, return -1.
 /// Else if there is a child process but it is still running, return -2.
 pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
-    trace!("kernel::pid[{}] sys_waitpid [{}]", current_task().unwrap().pid.0, pid);
+    trace!(
+        "kernel::pid[{}] sys_waitpid [{}]",
+        current_task().unwrap().pid.0,
+        pid
+    );
     let task = current_task().unwrap();
     // find a child process
 
@@ -124,7 +129,7 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
         "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-        let t = translated_refmut::<TimeVal>(current_user_token(), ts);
+    let t = translated_refmut::<TimeVal>(current_user_token(), ts);
 
     let us = get_time_us();
     *t = TimeVal {
@@ -142,7 +147,7 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
         "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-     let t = translated_refmut::<TaskInfo>(current_user_token(), ti);
+    let t = translated_refmut::<TaskInfo>(current_user_token(), ti);
 
     //  let task = &current_task().unwrap();
     //  *t = &mut task.inner_exclusive_access().task_info;
@@ -160,7 +165,12 @@ pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    trace!( "kernel: sys_mmap: {:x}, len: {}, prot: {:b}", start, len, prot );
+    trace!(
+        "kernel: sys_mmap: {:x}, len: {}, prot: {:b}",
+        start,
+        len,
+        prot
+    );
 
     if start % PAGE_SIZE != 0 {
         info!("start: {:x} is not aligned!", start);
@@ -195,19 +205,54 @@ pub fn sys_sbrk(size: i32) -> isize {
 
 /// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
-pub fn sys_spawn(_path: *const u8) -> isize {
+pub fn sys_spawn(path: *const u8) -> isize {
     trace!(
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    0
+
+    let task = current_task().unwrap();
+    let parent_inner = &mut task.inner_exclusive_access();
+
+    if parent_inner.task_info.status != TaskStatus::Running {
+        return -1;
+    }
+
+    let real_path = translated_str(current_user_token(), path);
+
+    let new_task = if let Some(elf_data) = get_app_data_by_name(&real_path) {
+        Arc::new(TaskControlBlock::new(elf_data))
+    } else {
+        warn!("App[{}]: load app data failure.", &real_path);
+        return -1;
+    };
+    let pid = new_task.pid.0;
+    parent_inner.children.push(new_task.clone());
+    // modify kernel_sp in trap_cx
+    // **** access child PCB exclusively
+    let trap_cx = new_task.inner_exclusive_access().get_trap_cx();
+    trap_cx.x[10] = 0;
+
+    add_task(new_task);
+    
+    pid as isize
 }
 
-// YOUR JOB: Set task priority.
-pub fn sys_set_priority(_prio: isize) -> isize {
+/// syscall ID：140
+/// 设置当前进程优先级为 prio
+/// 参数：prio 进程优先级，要求 prio >= 2
+/// 返回值：如果输入合法则返回 prio，否则返回 -1
+pub fn sys_set_priority(prio: isize) -> isize {
     trace!(
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
+    if prio < 2 {
+        return -1;
+    }
+    // let prio_t = translated_refmut::<isize>(current_user_token(), prio as *mut isize ) ;
+    let task = current_task().unwrap();
+    // task.inner_exclusive_access().set_priority(*prio_t as usize);
+    task.inner_exclusive_access().set_priority(prio as usize);
     0
 }

@@ -1,7 +1,7 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::{MAX_SYSCALL_NUM, TRAP_CONTEXT_BASE};
+use crate::config::{MAX_SYSCALL_NUM, TRAP_CONTEXT_BASE, BIG_STRIDE};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
 use crate::syscall::TaskInfo;
@@ -74,6 +74,12 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+    
+    /// Process priority
+    pub priority: usize,
+
+    /// Process stride
+    pub stride: u8,
 }
 
 impl TaskControlBlockInner {
@@ -90,6 +96,13 @@ impl TaskControlBlockInner {
     }
     pub fn is_zombie(&self) -> bool {
         self.get_status() == TaskStatus::Zombie
+    }
+    pub fn set_priority(&mut self, prio: usize) {
+        self.priority = prio
+    }
+
+    pub fn set_stride(&mut self) {
+        self.stride += (BIG_STRIDE / self.priority) as u8;
     }
 }
 
@@ -128,6 +141,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    priority: 16,
+                    stride: 0,
                 })
             },
         };
@@ -205,6 +220,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    priority: 16,
+                    stride: 0,
                 })
             },
         });
@@ -224,7 +241,6 @@ impl TaskControlBlock {
     pub fn getpid(&self) -> usize {
         self.pid.0
     }
-
     /// change the location of the program break. return None if failed.
     pub fn change_program_brk(&self, size: i32) -> Option<usize> {
         let mut inner = self.inner_exclusive_access();
