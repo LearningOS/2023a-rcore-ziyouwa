@@ -348,7 +348,7 @@ impl MapArea {
             vpn_range: VPNRange::new(another.vpn_range.get_start(), another.vpn_range.get_end()),
             data_frames: BTreeMap::new(),
             map_type: another.map_type,
-            map_perm: another.map_perm,
+            map_perm: another.map_perm.clone(),
         }
     }
     pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
@@ -438,6 +438,25 @@ bitflags! {
         const X = 1 << 3;
         ///Accessible in U mode
         const U = 1 << 4;
+    }
+}
+
+impl Clone for MapPermission {
+    fn clone(&self) -> Self {
+        let mut new_map_perm = MapPermission::empty();
+        if self.contains(MapPermission::R) {
+            new_map_perm.insert(MapPermission::R);
+        }
+        if self.contains(MapPermission::W) {
+            new_map_perm.insert(MapPermission::W);
+        }
+        if self.contains(MapPermission::X) {
+            new_map_perm.insert(MapPermission::X);
+        }
+        if self.contains(MapPermission::U) {
+            new_map_perm.insert(MapPermission::U);
+        }
+        new_map_perm
     }
 }
 

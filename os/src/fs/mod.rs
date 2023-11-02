@@ -36,6 +36,7 @@ pub struct Stat {
 bitflags! {
     /// The mode of a inode
     /// whether a directory or a file
+    #[derive(Debug)]
     pub struct StatMode: u32 {
         /// null
         const NULL  = 0;
