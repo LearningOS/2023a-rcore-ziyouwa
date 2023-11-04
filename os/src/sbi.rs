@@ -69,7 +69,7 @@ pub fn console_getchar() -> usize {
 }
 
 /// use sbi call to shutdown the kernel
-pub fn shutdown() -> ! {
+pub fn shutdown2() -> ! {
     sbi_call_4(
         SRST_EXTENSION,
         SYSTEM_RESET_FUNCTION,
@@ -78,4 +78,10 @@ pub fn shutdown() -> ! {
         0,
     );
     panic!("It should shutdown!");
+}
+
+use crate::board::QEMUExit;
+/// use sbi call to shutdown the kernel
+pub fn shutdown() -> ! {
+    crate::board::QEMU_EXIT_HANDLE.exit_failure();
 }
