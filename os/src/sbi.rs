@@ -80,8 +80,12 @@ pub fn shutdown2() -> ! {
     panic!("It should shutdown!");
 }
 
-use crate::board::QEMUExit;
-/// use sbi call to shutdown the kernel
 pub fn shutdown() -> ! {
-    crate::board::QEMU_EXIT_HANDLE.exit_failure();
+    sbi_call(
+        SBI_SHUTDOWN,
+        SystemResetType::Shutdown as usize,
+        SystemResetReason::NoReason as usize,
+        0,
+    );
+    panic!("It should shutdown!");
 }
