@@ -137,8 +137,10 @@ impl PageTable {
     #[allow(unused)]
     pub fn unmap(&mut self, vpn: VirtPageNum) {
         let pte = self.find_pte(vpn).unwrap();
+        trace!("PageTable-unmap: vpn: {:x}, pte: {:x}", vpn.0, pte.bits);
         assert!(pte.is_valid(), "vpn {:?} is invalid before unmapping", vpn);
         *pte = PageTableEntry::empty();
+        trace!("PageTable-unmap: After remove. vpn: {:x}, pte: {:x}", vpn.0, pte.bits);
     }
     /// get the page table entry from the virtual page number
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {

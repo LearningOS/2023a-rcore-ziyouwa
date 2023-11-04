@@ -8,6 +8,7 @@ use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use lazy_static::*;
@@ -44,6 +45,14 @@ impl Processor {
     pub fn current(&self) -> Option<Arc<TaskControlBlock>> {
         self.current.as_ref().map(Arc::clone)
     }
+
+    /// increase syscall times
+    pub fn increase_syscall_count(&self, syscall_id: usize) {
+        let binding = self.current().unwrap();
+        let inner = &mut binding.inner_exclusive_access();
+        inner.task_info.syscall_times[syscall_id] += 1;
+        // trace!("id:{}, {}", syscall_id, taskinfo.syscall_times[syscall_id]);
+    }
 }
 
 lazy_static! {
@@ -60,7 +69,10 @@ pub fn run_tasks() {
             // access coming task TCB exclusively
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
-            task_inner.task_status = TaskStatus::Running;
+            task_inner.task_info.status = TaskStatus::Running;
+            task_inner.task_info.time = get_time_ms();
+            task_inner.set_stride();
+            debug!("Pid: {}, stride: {}", task.getpid(), task_inner.stride);
             // release coming task_inner manually
             drop(task_inner);
             // release coming task TCB manually
@@ -108,4 +120,26 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
+}
+
+/// map memory
+pub fn memory_map(start: usize, len: usize, prot: usize) -> isize {
+    let binding = current_task().unwrap();
+    let inner = &mut binding.inner_exclusive_access().memory_set;
+
+    inner.memory_map(start, len, prot)
+}
+/// unmap memory
+pub fn memory_unmap(start: usize, len: usize) -> isize {
+    let binding = current_task().unwrap();
+    let inner = &mut binding.inner_exclusive_access().memory_set;
+
+    inner.memory_unmap(start, len)
+}
+/// increase syscall times
+pub fn increase_syscall_count(syscall_id: usize) {
+    let binding = current_task().unwrap();
+    let inner = &mut binding.inner_exclusive_access();
+    inner.task_info.syscall_times[syscall_id] += 1;
+    // trace!("id:{}, {}", syscall_id, taskinfo.syscall_times[syscall_id]);
 }

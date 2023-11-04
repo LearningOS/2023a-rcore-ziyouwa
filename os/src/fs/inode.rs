@@ -124,6 +124,41 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
     }
 }
 
+/// Link  a inode id to new name
+pub fn linkat(old: &str, new: &str) -> Option<Arc<OSInode>> {
+    if ROOT_INODE.find(new).is_some() {
+        trace!("Object {} had exist! Link abort.", new);
+        return None;
+    }
+
+    match ROOT_INODE.find(old) {
+        Some(old_inode) => {
+            if let Some(new_inode) = old_inode.link_to(new) {
+                Some(Arc::new(OSInode::new(true, true, new_inode)))
+            } else {
+                None
+            }
+        }
+        None => {
+            trace!("Object {} not found! Link abort.", old);
+            None
+        }
+    }
+}
+
+/// Link  a inode id to new name
+pub fn unlinkat(name: &str) -> isize {
+
+    if let Some( inode) = ROOT_INODE.find(name) {
+        inode.unlink();
+        if ROOT_INODE.find(name).is_some() {
+            trace!("Object {} unlink fail.", name);
+            return  -1;
+        }
+    }
+    0
+}
+
 impl File for OSInode {
     fn readable(&self) -> bool {
         self.readable
